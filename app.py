@@ -237,19 +237,39 @@ def get_controls():
 # Route: Create a new control
 @app.route('/controls', methods=['POST'])
 def create_control():
-    data = request.json
-    with driver.session() as session:
-        query = """
-        CREATE (c:Control {
-            controlID: $controlID,
-            controlName: $controlName,
-            effectiveness: $effectiveness
-        })
-        RETURN c
-        """
-        result = session.run(query, **data)
-        created_control = result.single()["c"]
-    return jsonify(created_control._properties), 201
+    try:
+        # Validate request data
+        data = request.json
+        if not data:
+            return jsonify({"error": "Request body must be JSON"}), 400
+        required_fields = {"controlID", "controlName", "effectiveness"}
+        missing_fields = required_fields - data.keys()
+        if missing_fields:
+            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+
+        with driver.session() as session:
+            query = """
+            CREATE (c:Control {
+                controlID: $controlID,
+                controlName: $controlName,
+                effectiveness: $effectiveness
+            })
+            RETURN c
+            """
+            result = session.run(query, **data)
+            created_control = result.single()
+            if not created_control:
+                return jsonify({"error": "Failed to create control"}), 500
+
+            # Return created control's properties
+            return jsonify(created_control["c"]._properties), 201
+
+    except exceptions.Neo4jError as e:
+        # Handle Neo4j-specific errors
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+    except Exception as e:
+        # Handle unexpected errors
+        return jsonify({"error": f"An unexpected error occurred: {str(e)}"}), 500
 
 # Route: Update an existing control
 @app.route('/controls/<control_id>', methods=['PUT'])
@@ -543,4 +563,4 @@ def close_driver(exception):
 # Run the Flask app
 if __name__ == "__main__":
     #app.run(debug=True)
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
